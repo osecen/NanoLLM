@@ -36,7 +36,8 @@ class VideoQuery(Agent):
           kwargs:  forwarded to the plugin initializers for ChatQuery, VideoSource, and VideoOutput
         """                    
         super().__init__()
-
+        self.query_delay = 1  # delay in seconds
+        self.last_query_time = time.time()
         if not vision_scaling:
             vision_scaling = 'resize'
             
@@ -160,6 +161,11 @@ class VideoQuery(Agent):
         applying RAG using the metadata from the most-similar match from the vector database (if enabled).
         Then render the latest text from the model over the image, and send it to the output video stream.
         """
+        current_time = time.time()
+        if current_time - self.last_query_time < self.query_delay:
+            return  # skip processing if the delay time has not passed
+
+        self.last_query_time = current_time
         if self.pause_video:
             if not self.pause_image:
                 self.pause_image = cudaMemcpy(image)
@@ -224,6 +230,11 @@ class VideoQuery(Agent):
         images and their metadata for RAG.  Also, if the user requested the last image
         be tagged, add the embedding to the vector database along with the metadata tags.
         """
+        current_time = time.time()
+        if current_time - self.last_query_time < self.query_delay:
+            return  # skip processing if the delay time has not passed
+
+        self.last_query_time = current_time
         if self.tag_image and self.last_image:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"/data/datasets/uploads/{timestamp}.jpg"
