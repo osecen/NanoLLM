@@ -59,9 +59,20 @@ class DynamicAgent(Agent):
             return
             
         load_begin = time.perf_counter()
+        
+        # Get init kwargs from state dict and user kwargs, with user kwargs taking precedence
         init_kwargs = {**state_dict.get('init_kwargs', {}), **kwargs}
         
-        # create the desired plugin type with the specified init args
+        # Preserve resource priorities if they exist in state_dict
+        if 'resource_priority' in state_dict:
+            if 'resource_priority' not in init_kwargs:
+                init_kwargs['resource_priority'] = state_dict['resource_priority']
+                logging.warning(f"PRIORITY DYNAMIC: Adding resource_priority={init_kwargs['resource_priority']} from state_dict")
+        
+        # Log what we're creating
+        logging.warning(f"PRIORITY AGENT: Creating plugin {type} with init_kwargs: {init_kwargs}")
+        
+        # Create the desired plugin type with the specified init args
         plugin = DynamicPlugin(type, **init_kwargs)
         
         # rename the plugin if one already exists by that name
@@ -238,6 +249,10 @@ class DynamicAgent(Agent):
         
         for plugin in plugins:
             try:
+                # Make sure resource_priority is preserved when creating plugin
+                if 'resource_priority' in plugin:
+                    logging.warning(f"PRIORITY STATE: Found resource_priority={plugin['resource_priority']} for {plugin['type']}")
+                
                 instance = self.add_plugin(
                     type=plugin['type'], 
                     wait=True, start=False, 

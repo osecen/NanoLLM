@@ -15,7 +15,7 @@ class NanoDB(Plugin):
     def __init__(self, path: str = "/data/nanodb/coco/2017", 
                  model: str = "openai/clip-vit-large-patch14-336", dtype: str = 'float16',
                  reserve: int = 1024, top_k: int = 16, crop: bool = False, 
-                 drop_inputs: bool=False, **kwargs):
+                 drop_inputs: bool=False, resource_priority: int=7, resource_weight: float=3.0, **kwargs):
         """
         Multimodal vector database with CUDA and CLIP/SigLIP embeddings.
         
@@ -27,8 +27,21 @@ class NanoDB(Plugin):
           top_k (int):  The number of search results and top K similar entries to return.
           crop (bool):  Enable or disable cropping of images (CLIP was trained with cropping, SigLIP was not)
           drop_inputs (bool): If true, only the latest message from the input queue will be used (older messages dropped)
+          resource_priority (int): Priority for resource allocation (medium-high priority for database)
+          resource_weight (float): Resource usage weight (moderate for database operations)
         """
-        super().__init__(inputs='text/image', outputs='search', drop_inputs=drop_inputs, **kwargs)
+        # Log priority values
+        logging.warning(f"PRIORITY INIT: NanoDB.__init__ called with resource_priority={resource_priority}")
+        
+        # Explicitly pass resource_priority and resource_weight
+        super().__init__(
+            inputs='text/image', 
+            outputs='search', 
+            drop_inputs=drop_inputs,
+            resource_priority=resource_priority,
+            resource_weight=resource_weight,
+            **kwargs
+        )
         
         self.db = nanodb.NanoDB(
             path=path, model=model, 

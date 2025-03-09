@@ -37,6 +37,7 @@ class RivaASR(AutoASR):
                  sample_rate_hz : int = 16000, audio_chunk : float = 0.1,
                  automatic_punctuation : bool = True, inverse_text_normalization : bool = False, 
                  profanity_filter : bool = False, boosted_words : str = None, boosted_score : float = 4.0, 
+                 resource_priority : int = 10, resource_weight : float = 2.0,
                  **kwargs):
         """
         Streaming ASR using NVIDIA Riva. You need to have the Riva container running first:
@@ -54,7 +55,16 @@ class RivaASR(AutoASR):
           boosted_words (str): Words to boost when decoding the transcript (hotword, wakeword)
           boosted_score (float): The amount by which to boost the scores of the words above.  
         """
-        super().__init__(output_channels=2, **kwargs)
+        # Log priority values
+        logging.warning(f"PRIORITY INIT: RivaASR.__init__ called with resource_priority={resource_priority}")
+        
+        # Explicitly pass resource_priority and resource_weight
+        super().__init__(
+            output_channels=2, 
+            resource_priority=resource_priority,
+            resource_weight=resource_weight,
+            **kwargs
+        )
         
         self.server = riva_server
         self.auth = riva.client.Auth(uri=riva_server)

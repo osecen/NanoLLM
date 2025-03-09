@@ -28,7 +28,7 @@ class VADFilter(Plugin):
     
     def __init__(self, vad_threshold: float=0.5, vad_window: float=0.5, 
                  interrupt_after: float=0.5, audio_chunk: float=0.1, 
-                 use_cache: bool=True, **kwargs):
+                 use_cache: bool=True, resource_priority: int=10, resource_weight: float=2.0, **kwargs):
         """
         Voice Activity Detection (VAD) model that filters/drops audio when there is no speaking.
         This is typically used before ASR to reduce erroneous transcripts from background noise.
@@ -41,9 +41,20 @@ class VADFilter(Plugin):
           interrupt_after (float): Send an interruption signal to mute/silence the bot after this many
                                    seconds of sustained audio activity.                 
           audio_chunk (float): The duration of time or number of audio samples processed per batch.
-          use_cache (bool): If true, reuse the model if it's already in memory (and cache it if it needs to be loaded)                     
+          use_cache (bool): If true, reuse the model if it's already in memory (and cache it if it needs to be loaded)
+          resource_priority (int): Priority for resource allocation (high priority for audio processing)
+          resource_weight (float): Resource usage weight (moderate for VAD operations)                      
         """
-        super().__init__(outputs=['audio', 'interrupt'], **kwargs)
+        # Log priority values
+        logging.warning(f"PRIORITY INIT: VADFilter.__init__ called with resource_priority={resource_priority}")
+        
+        # Explicitly pass resource_priority and resource_weight
+        super().__init__(
+            outputs=['audio', 'interrupt'],
+            resource_priority=resource_priority,
+            resource_weight=resource_weight, 
+            **kwargs
+        )
         
         if not HAS_WHISPER_TRT:
             raise ImportError("whisper_trt not installed (minimum BSP version JetPack 6 / L4T R36)")

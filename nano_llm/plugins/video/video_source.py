@@ -23,7 +23,8 @@ class VideoSource(Plugin):
                  video_input_width: int=640, video_input_height: int=480, 
                  video_input_codec: str=None, video_input_framerate: float=None, 
                  video_input_save: str=None, loops: int=None, num_buffers: int=None, 
-                 return_copy: bool=True, return_tensors: str='cuda', **kwargs):
+                 return_copy: bool=True, return_tensors: str='cuda',
+                 resource_priority: int=8, resource_weight: float=1.0, **kwargs):
         """
         Creates a video input stream from MIPI CSI or V4L2 camera, RTP/RTSP/WebRTC stream, or video file (MP4, MKV, AVI, FLV)
         
@@ -38,8 +39,20 @@ class VideoSource(Plugin):
           num_buffers (int): The number of images in the ringbuffer used for capturing (by default, 4 frames)
           return_copy (str): Copy incoming frames to prevent them from being overwritten in the ringbuffer.
           return_tensors (str): The object datatype of the image to output (np, pt, cuda)
+          resource_priority (int): Priority for resource allocation (high priority for video sources)
+          resource_weight (float): Resource usage weight (relatively low for video sources)
         """
-        super().__init__(inputs=0, outputs='image', **kwargs)
+        # Log priority values
+        logging.warning(f"PRIORITY INIT: VideoSource.__init__ called with resource_priority={resource_priority}")
+        
+        # Explicitly pass resource_priority and resource_weight
+        super().__init__(
+            inputs=0, 
+            outputs='image',
+            resource_priority=resource_priority,
+            resource_weight=resource_weight,
+            **kwargs
+        )
         
         options = {}
         

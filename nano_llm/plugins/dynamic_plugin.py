@@ -25,17 +25,30 @@ class DynamicPlugin(Plugin):
                 plugin = cls.Types[plugin]
             else:
                 raise ValueError(f"unregistered plugin type: {plugin}")
-                
+        
+        # Process string 'true'/'false' values
         for key, value in kwargs.items():
             if value == 'false':
                 kwargs[key] = False
             elif value == 'true':
                 kwargs[key] = True
-                
+        
+        # Special handling for resource priorities
+        if 'resource_priority' in kwargs:
+            priority = kwargs['resource_priority']
+            logging.warning(f"PRIORITY DYNAMIC: Creating {plugin.__name__} with explicit resource_priority={priority}")
+        
+        # Log what we're about to create
+        logging.warning(f"PRIORITY DYNAMIC: Creating plugin {plugin.__name__} with kwargs: {kwargs}")
+        
+        # Create the plugin instance with all the parameters
         instance = plugin(*args, **kwargs)
         
         if instance is not None:
             instance.init_kwargs = kwargs
+            # Check if resource_priority was correctly set
+            if hasattr(instance, 'resource_priority'):
+                logging.warning(f"PRIORITY DYNAMIC: Created {instance.name} with resource_priority={instance.resource_priority}")
             
         return instance
        
@@ -132,6 +145,9 @@ class DynamicPlugin(Plugin):
         DynamicPlugin.register(VideoOutput)
         DynamicPlugin.register(TextOverlay)
         DynamicPlugin.register(RateLimit)
+        # Add an alias for VideoOverlay -> TextOverlay since they're essentially the same thing
+        DynamicPlugin.TypeInfo["VideoOverlay"] = DynamicPlugin.TypeInfo["TextOverlay"]
+        DynamicPlugin.Types["VideoOverlay"] = TextOverlay
         
         # database
         DynamicPlugin.register(NanoDB)

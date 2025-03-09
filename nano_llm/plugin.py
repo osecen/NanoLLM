@@ -4,9 +4,11 @@ import queue
 import threading
 import logging
 import traceback
+import torch
+import inspect
 
 from nano_llm.web import WebServer
-from nano_llm.utils import AttributeDict, inspect_function, json_type, python_type
+from nano_llm.utils import AttributeDict, inspect_function, json_type, python_type, ResourceManager
 
 
 class Plugin(threading.Thread):
@@ -27,7 +29,8 @@ class Plugin(threading.Thread):
     Instances = []  #: Global list of plugin instances
         
     def __init__(self, name=None, title=None, inputs=1, outputs=1,
-                 relay=False, drop_inputs=False, threaded=True, **kwargs):
+                 relay=False, drop_inputs=False, threaded=True, 
+                 resource_priority=0, resource_weight=1.0, **kwargs):
         """
         Base initializer for Plugin implementations.
         
@@ -37,6 +40,8 @@ class Plugin(threading.Thread):
             relay (bool): if true, will relay any inputs as outputs after processing
             drop_inputs (bool): if true, only the most recent input in the queue will be used
             threaded (bool): if true, will spawn independent thread for processing the queue.
+            resource_priority (int): plugin priority for resource allocation (higher = more important when resources are constrained)
+            resource_weight (float): relative resource usage weight of this plugin (higher = uses more resources)
         """
         super().__init__(daemon=True)
 
@@ -94,6 +99,71 @@ class Plugin(threading.Thread):
         self.Callback = Callback
         
         Plugin.Instances.append(self)
+        
+        # Store resource priority values as instance variables
+        self.resource_priority = resource_priority
+        self.resource_weight = resource_weight
+        logging.warning(f"PRIORITY SET: Plugin {self.name} storing resource_priority={resource_priority}, resource_weight={resource_weight}")
+        
+        # Create a prioritized CUDA stream if CUDA is available and this is a high-priority plugin
+        self.cuda_stream = None
+        if torch.cuda.is_available() and resource_priority > 0:
+            # Create the stream with the appropriate priority based on the resource_priority
+            # We'll handle stream priorities directly without relying on PrioritizedCudaStream
+            try:
+                # Always create a basic CUDA stream first as a fallback
+                self.cuda_stream = torch.cuda.Stream()
+                
+                # If we have PyTorch with StreamPriority, use it to create a prioritized stream
+                if hasattr(torch.cuda, 'StreamPriority'):
+                    # Map resource_priority to CUDA stream priority
+                    stream_priority = None
+                    priority_name = "NORMAL"
+                    
+                    if resource_priority >= 9:  # Critical (WhisperASR, VADFilter)
+                        stream_priority = torch.cuda.StreamPriority.HIGH if hasattr(torch.cuda.StreamPriority, 'HIGH') else 0
+                        priority_name = "HIGH"
+                    elif resource_priority >= 7:  # High (VideoSource/Output, NanoDB) 
+                        # Use NORMAL for now, the intermediate is hard to calculate without the constants
+                        stream_priority = torch.cuda.StreamPriority.NORMAL if hasattr(torch.cuda.StreamPriority, 'NORMAL') else -1
+                        priority_name = "NORMAL" 
+                    elif resource_priority >= 5:  # Medium (WebServer, NanoLLM)
+                        stream_priority = torch.cuda.StreamPriority.NORMAL if hasattr(torch.cuda.StreamPriority, 'NORMAL') else -1
+                        priority_name = "NORMAL"
+                    else:
+                        stream_priority = torch.cuda.StreamPriority.LOW if hasattr(torch.cuda.StreamPriority, 'LOW') else -2
+                        priority_name = "LOW"
+                    
+                    # Try to create a prioritized stream using the StreamPriority
+                    if stream_priority is not None:
+                        # Check if Stream constructor accepts 'priority' parameter
+                        stream_params = inspect.signature(torch.cuda.Stream).parameters
+                        
+                        if 'priority' in stream_params:
+                            # Create stream with priority as a parameter
+                            self.cuda_stream = torch.cuda.Stream(priority=stream_priority)
+                            logging.info(f"Created persistent prioritized CUDA stream for {self.name} (priority={priority_name})")
+                        else:
+                            # Try creating with priority as a kwarg (might work in some PyTorch versions)
+                            try:
+                                self.cuda_stream = torch.cuda.Stream(priority=stream_priority)
+                                logging.info(f"Created persistent prioritized CUDA stream for {self.name} (priority={priority_name})")
+                            except Exception as e:
+                                logging.warning(f"Couldn't create prioritized stream, using default: {str(e)}")
+                
+            except Exception as e:
+                logging.warning(f"Error creating CUDA stream for {self.name}: {str(e)}")
+                # Make sure we have a stream even if prioritization failed
+                if self.cuda_stream is None:
+                    self.cuda_stream = torch.cuda.Stream()
+            
+        # Log stack trace to see call chain
+        import traceback
+        call_stack = traceback.format_stack()
+        logging.debug(f"PRIORITY STACK: {self.name} initialized with priority={resource_priority} from:\n{''.join(call_stack[-5:-1])}")
+        
+        # Register with resource manager - use full keyword args to avoid issues with inheritance
+        ResourceManager().register_plugin(self, priority=resource_priority, resource_weight=resource_weight)
      
     def __del__(self):
         """
@@ -610,6 +680,8 @@ class Plugin(threading.Thread):
         state = {
             'name': self.name,
             'type': self.__class__.__name__,
+            'resource_priority': self.resource_priority,
+            'resource_weight': self.resource_weight,
         }
         
         if config:

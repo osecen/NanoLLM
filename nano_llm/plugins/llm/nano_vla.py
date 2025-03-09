@@ -19,6 +19,7 @@ class NanoVLA(NanoLLM):
                  max_context_len: int=384, 
                  drop_inputs: bool=True,
                  yield_time: float=0,
+                 resource_priority: int=3, resource_weight: float=8.0, 
                  **kwargs):
         """
         Load a Vision/Language Action model.
@@ -30,7 +31,9 @@ class NanoVLA(NanoLLM):
           quantization (str): For MLC: recommend q4f16_ft or 8f16_ft. For AWQ: the path to the quantized weights.
           max_context_len (str): The maximum chat length in tokens (by default, inherited from the model)  
           drop_inputs (bool): If true, only the latest frame will be processed (older frames dropped)    
-          yield_time (float): Sleep for this many milliseconds after each frame for other high-priority processes.  
+          yield_time (float): Sleep for this many milliseconds after each frame for other high-priority processes.
+          resource_priority (int): Priority for resource allocation (lower than WhisperASR by default)
+          resource_weight (float): Resource usage weight (highest of all plugins by default)
         """
         super().__init__(model=model, vision_api=vision_api, api=api, quantization=quantization, 
                          max_context_len=max_context_len, drop_inputs=drop_inputs,

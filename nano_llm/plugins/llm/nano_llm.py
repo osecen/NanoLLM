@@ -33,7 +33,8 @@ class NanoLLM(Plugin):
     def __init__(self, model: str="princeton-nlp/Sheared-LLaMA-2.7B-ShareGPT", 
                  api: str="mlc", quantization: str="q4f16_ft", 
                  max_context_len: int=None, drop_inputs: bool=False,
-                 chat_template: str=None, system_prompt: str=None, **kwargs):
+                 chat_template: str=None, system_prompt: str=None,
+                 resource_priority: int=5, resource_weight: float=5.0, **kwargs):
         """
         Load an LLM and run generation on chat requests.
         
@@ -44,11 +45,19 @@ class NanoLLM(Plugin):
           max_context_len (str): The maximum chat length in tokens (by default, inherited from the model)  
           drop_inputs (bool): If true, only the latest message from the input queue will be used (older messages dropped)
           chat_template (str|dict): The chat template (by default, will attempt to determine from model type)
-          system_prompt (str):  Set the system prompt (changing this will reset the chat)          
+          system_prompt (str):  Set the system prompt (changing this will reset the chat)
+          resource_priority (int): Priority for resource allocation (lower than WhisperASR by default)
+          resource_weight (float): Resource usage weight (higher than other plugins by default)
         """
+        # Debug log to see what's happening with resource priority
+        logging.warning(f"PRIORITY INIT: NanoLLM.__init__ called with resource_priority={resource_priority}")
+        
+        # Explicitly pass resource_priority and resource_weight to super().__init__
         super().__init__(
             outputs=kwargs.pop('outputs', ['delta', 'partial', 'final', 'words', 'history', 'tools']), 
-            drop_inputs=drop_inputs, 
+            drop_inputs=drop_inputs,
+            resource_priority=resource_priority,  # Explicitly pass resource_priority
+            resource_weight=resource_weight,      # Explicitly pass resource_weight
             **kwargs
         )
 

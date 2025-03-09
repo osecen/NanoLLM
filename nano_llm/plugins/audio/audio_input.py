@@ -18,7 +18,8 @@ class AudioInputDevice(Plugin):
     Outputs audio samples as an np.ndarray with dtype=int16
     """
     def __init__(self, audio_input_device: int = None, audio_input_channels: int = 1, 
-                 sample_rate_hz: int = None, audio_chunk: float = 0.1, **kwargs):
+                 sample_rate_hz: int = None, audio_chunk: float = 0.1, 
+                 resource_priority: int=9, resource_weight: float=1.0, **kwargs):
         """
         Capture audio from a microphone or soundcard device attached to the machine.
         
@@ -28,8 +29,20 @@ class AudioInputDevice(Plugin):
           sample_rate_hz (int):  Sample rate to open the device with (typically 16000, 44100, 48000),
                                  or None to use the device's default sampling rate.
           audio_chunk (float): The duration of time or number of audio samples captured per batch.
+          resource_priority (int): Priority for resource allocation (high priority for audio input)
+          resource_weight (float): Resource usage weight (low for audio input)
         """
-        super().__init__(inputs=0, outputs='audio', **kwargs)
+        # Log priority values
+        logging.warning(f"PRIORITY INIT: AudioInputDevice.__init__ called with resource_priority={resource_priority}")
+        
+        # Explicitly pass resource_priority and resource_weight
+        super().__init__(
+            inputs=0, 
+            outputs='audio',
+            resource_priority=resource_priority,
+            resource_weight=resource_weight,
+            **kwargs
+        )
         
         self.pa = pyaudio.PyAudio()
         

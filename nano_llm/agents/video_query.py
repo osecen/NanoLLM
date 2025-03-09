@@ -36,22 +36,54 @@ class VideoQuery(Agent):
           kwargs:  forwarded to the plugin initializers for ChatQuery, VideoSource, and VideoOutput
         """                    
         super().__init__()
-        self.query_delay = 1  # delay in seconds
-        self.last_query_time = time.time()
+
         if not vision_scaling:
             vision_scaling = 'resize'
             
-        #: The model plugin (ChatQuery)
-        self.llm = ChatQuery(model=model, drop_inputs=True, vision_scaling=vision_scaling, warmup=True, **kwargs) #ProcessProxy('ChatQuery', model=model, drop_inputs=True, vision_scaling=vision_scaling, warmup=True, **kwargs)
+        #: The model plugin (ChatQuery) - Lower priority since it's resource-intensive
+        # Make sure these parameters aren't overridden by kwargs
+        llm_kwargs = {**kwargs}
+        llm_kwargs['resource_priority'] = 5
+        llm_kwargs['resource_weight'] = 6.0
+        
+        # More detailed logging for creating ChatQuery
+        logging.warning(f"PRIORITY INIT: Creating ChatQuery with resource_priority={llm_kwargs['resource_priority']}")
+        logging.warning(f"PRIORITY INIT: Full kwargs being passed to ChatQuery: {llm_kwargs}")
+        
+        # Create the ChatQuery plugin
+        self.llm = ChatQuery(model=model, drop_inputs=True, vision_scaling=vision_scaling, warmup=True, **llm_kwargs)
+        
+        # Verify that the ChatQuery plugin has the correct priority
+        logging.warning(f"PRIORITY INIT: Created ChatQuery with actual resource_priority={getattr(self.llm, 'resource_priority', 'NOT SET')}")
         self.llm.add(PrintStream(color='green', relay=True).add(self.on_text))
         self.llm.start()
 
         self.text = ""
         self.eos = False
 
-        # create video streams    
-        self.video_source = VideoSource(**kwargs, cuda_stream=0)  #: The video source plugin
-        self.video_output = VideoOutput(**kwargs, cuda_stream=0)  #: The video output plugin
+        # create video streams - Higher priority for video processing
+        # Make sure these parameters aren't overridden by kwargs
+        source_kwargs = {**kwargs, 'cuda_stream': 0}
+        source_kwargs['resource_priority'] = 8
+        source_kwargs['resource_weight'] = 1.0
+        
+        # Debug logs for VideoSource creation
+        logging.warning(f"PRIORITY INIT: Creating VideoSource with resource_priority={source_kwargs['resource_priority']}")
+        logging.warning(f"PRIORITY INIT: Full kwargs for VideoSource: {source_kwargs}")
+        
+        self.video_source = VideoSource(**source_kwargs)  #: The video source plugin
+        logging.warning(f"PRIORITY INIT: Created VideoSource with actual resource_priority={getattr(self.video_source, 'resource_priority', 'NOT SET')}")
+        
+        # Debug logs for VideoOutput creation
+        output_kwargs = {**kwargs, 'cuda_stream': 0}
+        output_kwargs['resource_priority'] = 8
+        output_kwargs['resource_weight'] = 1.0
+        
+        logging.warning(f"PRIORITY INIT: Creating VideoOutput with resource_priority={output_kwargs['resource_priority']}")
+        logging.warning(f"PRIORITY INIT: Full kwargs for VideoOutput: {output_kwargs}")
+        
+        self.video_output = VideoOutput(**output_kwargs)  #: The video output plugin
+        logging.warning(f"PRIORITY INIT: Created VideoOutput with actual resource_priority={getattr(self.video_output, 'resource_priority', 'NOT SET')}")
         
         self.video_source.add(self.on_video, threaded=False)
         self.video_output.start()
@@ -96,12 +128,17 @@ class VideoQuery(Agent):
             self.db_share_embed = False #(self.llm.config.mm_vision_tower == 'openai/clip-vit-large-patch14-336')
             
             #: The `NanoDB <https://github.com/dusty-nv/jetson-containers/tree/master/packages/vectordb/nanodb>`_ vector database 
-            self.db = NanoDB(
-                path=nanodb, 
-                model=None if self.db_share_embed else 'ViT-L/14@336px',
-                reserve=kwargs.get('nanodb_reserve'), 
-                top_k=18, drop_inputs=True,
-            ).start().add(self.on_search)
+            # Make sure resource parameters are explicitly set
+            db_kwargs = {
+                'path': nanodb,
+                'model': None if self.db_share_embed else 'ViT-L/14@336px',
+                'reserve': kwargs.get('nanodb_reserve'),
+                'top_k': 18, 
+                'drop_inputs': True,
+                'resource_priority': 7,  # Medium-high priority
+                'resource_weight': 3.0,  # Moderate resource use
+            }
+            self.db = NanoDB(**db_kwargs).start().add(self.on_search)
             
             if self.db_share_embed:
                 self.llm.add(self.on_image_embedding, channel=ChatQuery.OutputImageEmbedding)
@@ -141,6 +178,11 @@ class VideoQuery(Agent):
         web_title = web_title if web_title else 'LIVE LLAVA'
         
         #: the webserver (by default on ``https://localhost:8050``)
+        # Make sure resource parameters are explicitly set
+        server_kwargs = {**kwargs, **webrtc_args}
+        server_kwargs['resource_priority'] = 6  # Medium priority
+        server_kwargs['resource_weight'] = 1.0  # Low resource usage
+        
         self.server = WebServer(
             msg_callback=self.on_websocket, 
             index='video_query.html', 
@@ -148,12 +190,11 @@ class VideoQuery(Agent):
             model=os.path.basename(model),
             mounts=mounts,
             nanodb=nanodb,
-            **webrtc_args,
-            **kwargs
+            **server_kwargs
         )
         
         #: event filters for parsing bot output and triggering actions when conditions are met.
-        self.events = EventFilter(server=self.server)
+        self.events = EventFilter(server=self.server, resource_priority=6, resource_weight=1.0)
    
     def on_video(self, image):
         """
@@ -161,11 +202,6 @@ class VideoQuery(Agent):
         applying RAG using the metadata from the most-similar match from the vector database (if enabled).
         Then render the latest text from the model over the image, and send it to the output video stream.
         """
-        current_time = time.time()
-        if current_time - self.last_query_time < self.query_delay:
-            return  # skip processing if the delay time has not passed
-
-        self.last_query_time = current_time
         if self.pause_video:
             if not self.pause_image:
                 self.pause_image = cudaMemcpy(image)
@@ -230,11 +266,6 @@ class VideoQuery(Agent):
         images and their metadata for RAG.  Also, if the user requested the last image
         be tagged, add the embedding to the vector database along with the metadata tags.
         """
-        current_time = time.time()
-        if current_time - self.last_query_time < self.query_delay:
-            return  # skip processing if the delay time has not passed
-
-        self.last_query_time = current_time
         if self.tag_image and self.last_image:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"/data/datasets/uploads/{timestamp}.jpg"

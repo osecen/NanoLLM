@@ -30,7 +30,8 @@ class WhisperASR(AutoASR):
     ModelCache = {}
     
     def __init__(self, model: str='base', language_code: str='en_US', 
-                 partial_transcripts: float=0.25, use_cache: bool=True, **kwargs):
+                 partial_transcripts: float=0.25, use_cache: bool=True,
+                 resource_priority: int=10, resource_weight: float=2.0, **kwargs):
         """
         Whisper streaming voice transcription with TensorRT.
         
@@ -39,8 +40,19 @@ class WhisperASR(AutoASR):
           language_code (str): The language to load the models for (currently 'en_US')
           partial_transcripts (float): The update rate for streaming partial ASR results (in seconds, <=0 to disable)
           use_cache (bool): If true, reuse the model if it's already in memory (and cache it if it needs to be loaded)
+          resource_priority (int): Priority for resource allocation, higher value means WhisperASR gets priority when resources are limited
+          resource_weight (float): Resource usage weight, higher means the plugin is known to use more resources
         """
-        super().__init__(outputs=['final', 'partial'], **kwargs)
+        # Debug - trace priority parameters
+        logging.warning(f"PRIORITY TRACE: WhisperASR.__init__ received resource_priority={resource_priority}, resource_weight={resource_weight}")
+        
+        # Explicitly pass resource priorities through to parent class
+        super().__init__(
+            outputs=['final', 'partial'], 
+            resource_priority=resource_priority, 
+            resource_weight=resource_weight,
+            **kwargs
+        )
         
         if not HAS_WHISPER_TRT:
             raise ImportError("whisper_trt not installed (requires JetPack 6 / L4T R36)")

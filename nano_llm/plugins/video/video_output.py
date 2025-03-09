@@ -15,7 +15,8 @@ class VideoOutput(Plugin):
     """
     def __init__(self, video_output: str="webrtc://@:8554/output", 
                  video_output_codec: str=None, video_output_bitrate: int=None, 
-                 video_output_save: str=None, **kwargs):
+                 video_output_save: str=None, 
+                 resource_priority: int=8, resource_weight: float=1.0, **kwargs):
         """
         Output video to a network stream (RTP/RTSP/WebRTC), video file, or display.
         
@@ -24,8 +25,19 @@ class VideoOutput(Plugin):
           video_output_codec (str): Force a particular codec (H264, H265, VP8, VP9, MJPEG)
           video_output_bitrate (int): The desired bitrate in bits per second (default is 4 Mbps)
           video_output_save (str): Save the encoded video to disk in MP4, MKV, AVI, or FLV format.
+          resource_priority (int): Priority for resource allocation (high priority for video outputs)
+          resource_weight (float): Resource usage weight (relatively low for video outputs)
         """
-        super().__init__(outputs=0, **kwargs)
+        # Log priority values
+        logging.warning(f"PRIORITY INIT: VideoOutput.__init__ called with resource_priority={resource_priority}")
+        
+        # Explicitly pass resource_priority and resource_weight
+        super().__init__(
+            outputs=0,
+            resource_priority=resource_priority,
+            resource_weight=resource_weight, 
+            **kwargs
+        )
         
         options = {}
 
