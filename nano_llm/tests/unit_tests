@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+# Import mocks first
+import sys
+import os
+
+# Add the NanoLLM directory to the Python path
+NANO_LLM_PATH = "/root/repo/NanoLLM"
+if NANO_LLM_PATH not in sys.path:
+    sys.path.insert(0, NANO_LLM_PATH)
+
+# Now import the mock setup
+from unittest.mock import MagicMock
+
+# Mock the torch module
+sys.modules['torch'] = MagicMock()
+sys.modules['torch.cuda'] = MagicMock()
+
+import unittest
+from unittest.mock import patch, MagicMock
+import logging
+
+# Now import the Plugin class
+from nano_llm.plugin import Plugin
+
+class TestPluginCudaStream(unittest.TestCase):
+    
+    @patch('torch.cuda.is_available')
+    @patch('torch.cuda.Stream')
+    @patch('torch.cuda.StreamPriority')
+    def test_cuda_stream_creation_with_priority(self, mock_stream_priority, mock_stream, mock_cuda_available):
+        # Setup mocks
+        mock_cuda_available.return_value = True
+        
+        # Mock StreamPriority enum
+        mock_stream_priority.HIGH = 0
+        mock_stream_priority.NORMAL = -1
+        mock_stream_priority.LOW = -2
+        
+        # Create a mock stream instance
+        mock_stream_instance = MagicMock()
+        mock_stream.return_value = mock_stream_instance
+        
+        # Create a plugin with high resource priority
+        plugin = Plugin(name="TestPlugin", resource_priority=10)
+        
+        # Verify that Stream was called with the correct priority
+        mock_stream.assert_called_once()
+        args, kwargs = mock_stream.call_args
+        
+        # Check that priority was passed as a parameter
+        self.assertIn('priority', kwargs)
+        self.assertEqual(kwargs['priority'], mock_stream_priority.HIGH)
+        
+        # Verify that the cuda_stream attribute was set correctly
+        self.assertEqual(plugin.cuda_stream, mock_stream_instance)
+    
+    @patch('torch.cuda.is_available')
+    @patch('torch.cuda.Stream')
+    @patch('torch.cuda.StreamPriority')
+    def test_cuda_stream_creation_with_medium_priority(self, mock_stream_priority, mock_stream, mock_cuda_available):
+        # Setup mocks
+        mock_cuda_available.return_value = True
+        
+        # Mock StreamPriority enum
+        mock_stream_priority.HIGH = 0
+        mock_stream_priority.NORMAL = -1
+        mock_stream_priority.LOW = -2
+        
+        # Create a mock stream instance
+        mock_stream_instance = MagicMock()
+        mock_stream.return_value = mock_stream_instance
+        
+        # Create a plugin with medium resource priority
+        plugin = Plugin(name="TestPlugin", resource_priority=6)
+        
+        # Verify that Stream was called with the correct priority
+        mock_stream.assert_called_once()
+        args, kwargs = mock_stream.call_args
+        
+        # Check that priority was passed as a parameter
+        self.assertIn('priority', kwargs)
+        self.assertEqual(kwargs['priority'], mock_stream_priority.NORMAL)
+        
+        # Verify that the cuda_stream attribute was set correctly
+        self.assertEqual(plugin.cuda_stream, mock_stream_instance)
+    
+
+if __name__ == '__main__':
+    unittest.main()
